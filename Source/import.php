@@ -12,6 +12,8 @@ try {
 	while (!feof($zip)) {
 		fwrite($tmp, fread($zip, 8192));
 	}
+	fclose($zip);
+	fclose($tmp);
 } catch (Exception $e) {
 	fputs(STDERR, $e->getMessage()."\n");
 	if (!is_null($zip)) fclose($zip);
