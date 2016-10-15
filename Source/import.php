@@ -6,18 +6,51 @@ $tmp_file = tempnam($tmp_dir, 'postal');
 
 $zip = null;
 $tmp = null;
+$cmp = null;
 try {
-	if (!($zip = fopen($zip_url, 'rb'))) throw 'File can not be opened. :'.$zip_url;
-	if (!($tmp = fopen($tmp_file, 'wb'))) throw 'File can not be opened. :'.$tmp_file;
+	// ZIPファイルダウンロード
+	if (!($zip = fopen($zip_url, 'rb'))) throw new Exception('File can not be opened. :'.$zip_url);
+	if (!($tmp = fopen($tmp_file, 'wb'))) throw new Exception('File can not be opened. :'.$tmp_file);
 	while (!feof($zip)) {
 		fwrite($tmp, fread($zip, 8192));
 	}
 	fclose($zip);
 	fclose($tmp);
+	$zip = null;
+	$tmp = null;
+	// ZIPファイル展開
+	$cmp = new ZipArchive();
+	if ($cmp->open($tmp_file) === true) {
+		for ($i = 0; $i < $cmp->numFiles; $i++) {
+			$fp = null;
+			$ofp = null;
+			try {
+				$entry = $cmp->getNameIndex($i);
+				if ( substr( $entry, -1 ) == '/' ) continue;
+				$fp = $cmp->getStream( $entry );
+				$ofp = fopen( $tmp_dir.'/'.$entry, 'wb' );
+				if (!$fp) throw new Exception('Unable to extract the file.');
+
+				while (!feof($fp))
+					fwrite($ofp, fread($fp, 8192));
+				fclose($fp);
+				fclose($ofp);
+			} catch (Exception $e) {
+				if (!is_null($fp)) fclose($fp);
+				if (!is_null($ofp)) fclose($ofp);
+				throw $e;
+			}
+		}
+		if (!is_null($cmp))
+			$cmp->close();
+	}
+	else
+		throw new Exception('Can not open ZIP file.');
 } catch (Exception $e) {
 	fputs(STDERR, $e->getMessage()."\n");
 	if (!is_null($zip)) fclose($zip);
 	if (!is_null($tmp)) fclose($tmp);
+	if (!is_null($cmp)) $cmp->close();
 }
 
 unlink($tmp_file);
