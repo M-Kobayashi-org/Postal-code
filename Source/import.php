@@ -32,6 +32,7 @@ try {
 				if ( substr( $entry, -1 ) == '/' ) continue;
 				$fp = $cmp->getStream( $entry );
 				if (!$fp) throw new Exception('Unable to extract the file.');
+				// ストリームフィルタをセット
 				if (!stream_filter_prepend($fp, 'convert.iconv.cp932/utf-8', STREAM_FILTER_READ))
 					throw new Exception('Counld not apply stream filter.');
 				$ofp = fopen( $tmp_dir.'/'.$entry, 'wb' );
