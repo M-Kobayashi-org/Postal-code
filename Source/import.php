@@ -4,12 +4,12 @@ mb_internal_encoding('UTF-8');
 
 $zip_file = 'ken_all_rome.zip';
 $zip_url = 'http://www.post.japanpost.jp/zipcode/dl/roman/'.$zip_file;
-$tmp_dir = sys_get_temp_dir();
-$tmp_file = tempnam($tmp_dir, 'postal');
+$tmp_file = tempnam(sys_get_temp_dir(), 'postal');
 
 $zip = null;
 $tmp = null;
 $cmp = null;
+$dbh = null;
 try {
 	// ZIPファイルダウンロード
 	if (!($zip = fopen($zip_url, 'rb'))) throw new Exception('File can not be opened. :'.$zip_url);
@@ -19,6 +19,19 @@ try {
 	}
 	fclose($zip);
 	fclose($tmp);
+
+	// DB接続
+	$dbh = new PDO('mysql:host=localhost;dbname=test;charset=utf8', 'root', '', array(
+			PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+			PDO::ATTR_EMULATE_PREPARES => true,
+	));
+	$dbh->exec("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;");
+	// INSERT文指定
+	$sth = $dbh->prepare('INSERT INTO roman_alphabet_postal_codes (postal_code, name_of_prefectures, '
+			.'city_name, town_area_name, roman_alphabet_name_of_prefectures, roman_alphabet_city_name, '
+			.'roman_alphabet_town_area_name) VALUES (?, ?, ?, ?, ?, ?, ?)');
+	$dbh->beginTransaction();
+
 	$zip = null;
 	$tmp = null;
 	// ZIPファイル展開
@@ -35,12 +48,26 @@ try {
 				// ストリームフィルタをセット
 				if (!stream_filter_prepend($fp, 'convert.iconv.cp932/utf-8', STREAM_FILTER_READ))
 					throw new Exception('Counld not apply stream filter.');
-				$ofp = fopen( $tmp_dir.'/'.$entry, 'wb' );
+				$ofp = fopen( 'php://temp/maxmemory', 'r+b' );
 				if (!$ofp) throw new Exception('File can not be opened. :'.$entry);
 
 				while (!feof($fp))
 					fwrite($ofp, fread($fp, 8192));
 				fclose($fp);
+
+				rewind($ofp);
+				while (($line = fgetcsv($ofp, 1024 * 1024, ',')) !== false) {
+					// DBに挿入
+					$sth->bindValue(1,$line[0],PDO::PARAM_STR);
+					$sth->bindValue(2,$line[1],PDO::PARAM_STR);
+					$sth->bindValue(3,$line[2],PDO::PARAM_STR);
+					$sth->bindValue(4,$line[3],PDO::PARAM_STR);
+					$sth->bindValue(5,$line[4],PDO::PARAM_STR);
+					$sth->bindValue(6,$line[5],PDO::PARAM_STR);
+					$sth->bindValue(7,$line[6],PDO::PARAM_STR);
+					$sth->execute();
+				}
+
 				fclose($ofp);
 			} catch (Exception $e) {
 				if (!is_null($fp)) fclose($fp);
@@ -50,11 +77,16 @@ try {
 		}
 		if (!is_null($cmp))
 			$cmp->close();
+
 	}
 	else
 		throw new Exception('Can not open ZIP file.');
+
+	$dbh->commit();
+	$dbh = null;
 } catch (Exception $e) {
 	fputs(STDERR, $e->getMessage()."\n");
+	if (!is_null($dbh)) $dbh->rollBack();
 	if (!is_null($zip)) fclose($zip);
 	if (!is_null($tmp)) fclose($tmp);
 	if (!is_null($cmp)) $cmp->close();
